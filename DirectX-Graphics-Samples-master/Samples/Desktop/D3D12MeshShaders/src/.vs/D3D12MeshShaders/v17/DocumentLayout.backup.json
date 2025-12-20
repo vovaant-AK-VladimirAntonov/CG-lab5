@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Vovaa\\OneDrive\\\u0420\u0430\u0431\u043E\u0447\u0438\u0439 \u0441\u0442\u043E\u043B\\DirectX-Graphics-Samples-master\\Samples\\Desktop\\D3D12MeshShaders\\src\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}|MeshletRender\\D3D12MeshletRender.vcxproj|C:\\Users\\Vovaa\\OneDrive\\\u0420\u0430\u0431\u043E\u0447\u0438\u0439 \u0441\u0442\u043E\u043B\\DirectX-Graphics-Samples-master\\Samples\\Desktop\\D3D12MeshShaders\\src\\MeshletRender\\D3D12MeshletRender.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}|MeshletRender\\D3D12MeshletRender.vcxproj|solutionrelative:MeshletRender\\D3D12MeshletRender.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "D3D12MeshletRender.cpp",
+              "DocumentMoniker": "C:\\Users\\Vovaa\\OneDrive\\\u0420\u0430\u0431\u043E\u0447\u0438\u0439 \u0441\u0442\u043E\u043B\\DirectX-Graphics-Samples-master\\Samples\\Desktop\\D3D12MeshShaders\\src\\MeshletRender\\D3D12MeshletRender.cpp",
+              "RelativeDocumentMoniker": "MeshletRender\\D3D12MeshletRender.cpp",
+              "ToolTip": "C:\\Users\\Vovaa\\OneDrive\\\u0420\u0430\u0431\u043E\u0447\u0438\u0439 \u0441\u0442\u043E\u043B\\DirectX-Graphics-Samples-master\\Samples\\Desktop\\D3D12MeshShaders\\src\\MeshletRender\\D3D12MeshletRender.cpp*",
+              "RelativeToolTip": "MeshletRender\\D3D12MeshletRender.cpp*",
+              "ViewState": "AgIAAAUAAAAAAAAAAAAuwA4AAABIAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-12-20T00:14:03.028Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
