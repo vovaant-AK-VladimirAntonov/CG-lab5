@@ -13,6 +13,8 @@
 #include "Win32Application.h"
 
 HWND Win32Application::m_hwnd = nullptr;
+bool Win32Application::m_mouseCapture = false;
+POINT Win32Application::m_lastMousePos = { 0, 0 };
 
 int Win32Application::Run(DXSample* pSample, HINSTANCE hInstance, int nCmdShow)
 {
@@ -98,6 +100,42 @@ LRESULT CALLBACK Win32Application::WindowProc(HWND hWnd, UINT message, WPARAM wP
         if (pSample)
         {
             pSample->OnKeyUp(static_cast<UINT8>(wParam));
+        }
+        return 0;
+
+    case WM_RBUTTONDOWN:
+        SetCapture(hWnd);
+        m_mouseCapture = true;
+        GetCursorPos(&m_lastMousePos);
+        ShowCursor(FALSE);
+        if (pSample)
+        {
+            pSample->OnMouseButtonDown(false);
+        }
+        return 0;
+
+    case WM_RBUTTONUP:
+        ReleaseCapture();
+        m_mouseCapture = false;
+        ShowCursor(TRUE);
+        if (pSample)
+        {
+            pSample->OnMouseButtonUp(false);
+        }
+        return 0;
+
+    case WM_MOUSEMOVE:
+        if (m_mouseCapture && pSample)
+        {
+            POINT currentPos;
+            GetCursorPos(&currentPos);
+            int dx = currentPos.x - m_lastMousePos.x;
+            int dy = currentPos.y - m_lastMousePos.y;
+            if (dx != 0 || dy != 0)
+            {
+                pSample->OnMouseMove(dx, dy);
+                SetCursorPos(m_lastMousePos.x, m_lastMousePos.y);
+            }
         }
         return 0;
 

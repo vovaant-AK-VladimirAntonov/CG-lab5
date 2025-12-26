@@ -27,6 +27,8 @@ public:
 
     void OnKeyDown(WPARAM key);
     void OnKeyUp(WPARAM key);
+    void OnMouseMove(int dx, int dy);
+    void SetMouseSensitivity(float sensitivity);
 
 private:
     void Reset();
@@ -37,6 +39,8 @@ private:
         bool a;
         bool s;
         bool d;
+        bool q;  // Вниз
+        bool e;  // Вверх
 
         bool left;
         bool right;
@@ -52,6 +56,7 @@ private:
     XMFLOAT3 m_upDirection;
     float m_moveSpeed;            // Speed at which the camera moves, in units per second.
     float m_turnSpeed;            // Speed at which the camera turns, in radians per second.
+    float m_mouseSensitivity;     // Mouse sensitivity for look control.
 
     KeysPressed m_keysPressed;
 };

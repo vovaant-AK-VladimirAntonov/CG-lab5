@@ -14,7 +14,9 @@
                   SRV(t0), \
                   SRV(t1), \
                   SRV(t2), \
-                  SRV(t3)"
+                  SRV(t3), \
+                  DescriptorTable(SRV(t4, numDescriptors=2)), \
+                  DescriptorTable(Sampler(s0))"
 
 struct Constants
 {
@@ -22,6 +24,7 @@ struct Constants
     float4x4 WorldView;
     float4x4 WorldViewProj;
     uint     DrawMeshlets;
+    uint     UseTexture;
 };
 
 struct MeshInfo
@@ -34,6 +37,7 @@ struct Vertex
 {
     float3 Position;
     float3 Normal;
+    float2 TexCoord;
 };
 
 struct VertexOut
@@ -41,6 +45,7 @@ struct VertexOut
     float4 PositionHS   : SV_Position;
     float3 PositionVS   : POSITION0;
     float3 Normal       : NORMAL0;
+    float2 TexCoord     : TEXCOORD0;
     uint   MeshletIndex : COLOR0;
 };
 
@@ -105,6 +110,7 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
     vout.PositionVS = mul(float4(v.Position, 1), Globals.WorldView).xyz;
     vout.PositionHS = mul(float4(v.Position, 1), Globals.WorldViewProj);
     vout.Normal = mul(float4(v.Normal, 0), Globals.World).xyz;
+    vout.TexCoord = v.TexCoord;
     vout.MeshletIndex = meshletIndex;
 
     return vout;

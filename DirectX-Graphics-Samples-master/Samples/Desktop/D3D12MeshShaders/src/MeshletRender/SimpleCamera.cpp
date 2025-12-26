@@ -21,6 +21,7 @@ SimpleCamera::SimpleCamera():
     m_upDirection(0, 1, 0),
     m_moveSpeed(20.0f),
     m_turnSpeed(XM_PIDIV2),
+    m_mouseSensitivity(0.003f),
     m_keysPressed{}
 {
 }
@@ -51,28 +52,10 @@ void SimpleCamera::Reset()
 
 void SimpleCamera::Update(float elapsedSeconds)
 {
-    // Calculate the move vector in camera space.
-    XMFLOAT3 move(0, 0, 0);
-
-    if (m_keysPressed.a)
-        move.x -= 1.0f;
-    if (m_keysPressed.d)
-        move.x += 1.0f;
-    if (m_keysPressed.w)
-        move.z -= 1.0f;
-    if (m_keysPressed.s)
-        move.z += 1.0f;
-
-    if (fabs(move.x) > 0.1f && fabs(move.z) > 0.1f)
-    {
-        XMVECTOR vector = XMVector3Normalize(XMLoadFloat3(&move));
-        move.x = XMVectorGetX(vector);
-        move.z = XMVectorGetZ(vector);
-    }
-
     float moveInterval = m_moveSpeed * elapsedSeconds;
     float rotateInterval = m_turnSpeed * elapsedSeconds;
 
+    // Обработка поворота клавишами
     if (m_keysPressed.left)
         m_yaw += rotateInterval;
     if (m_keysPressed.right)
@@ -82,21 +65,42 @@ void SimpleCamera::Update(float elapsedSeconds)
     if (m_keysPressed.down)
         m_pitch -= rotateInterval;
 
-    // Prevent looking too far up or down.
-    m_pitch = min(m_pitch, XM_PIDIV4);
-    m_pitch = max(-XM_PIDIV4, m_pitch);
+    // Ограничение угла наклона
+    m_pitch = min(m_pitch, XM_PIDIV2 - 0.01f);
+    m_pitch = max(-XM_PIDIV2 + 0.01f, m_pitch);
 
-    // Move the camera in model space.
-    float x = move.x * -cosf(m_yaw) - move.z * sinf(m_yaw);
-    float z = move.x * sinf(m_yaw) - move.z * cosf(m_yaw);
-    m_position.x += x * moveInterval;
-    m_position.z += z * moveInterval;
-
-    // Determine the look direction.
+    // Вычисляем направление взгляда
     float r = cosf(m_pitch);
     m_lookDirection.x = r * sinf(m_yaw);
     m_lookDirection.y = sinf(m_pitch);
     m_lookDirection.z = r * cosf(m_yaw);
+
+    // Вектор "вправо" (перпендикулярен направлению взгляда и вверх)
+    XMVECTOR lookDir = XMLoadFloat3(&m_lookDirection);
+    XMVECTOR upDir = XMLoadFloat3(&m_upDirection);
+    XMVECTOR rightDir = XMVector3Normalize(XMVector3Cross(upDir, lookDir));
+
+    // Движение вперёд/назад по направлению взгляда (полёт)
+    XMVECTOR position = XMLoadFloat3(&m_position);
+
+    if (m_keysPressed.w)
+        position = XMVectorAdd(position, XMVectorScale(lookDir, moveInterval));
+    if (m_keysPressed.s)
+        position = XMVectorSubtract(position, XMVectorScale(lookDir, moveInterval));
+
+    // Движение влево/вправо (стрейф)
+    if (m_keysPressed.a)
+        position = XMVectorAdd(position, XMVectorScale(rightDir, moveInterval));
+    if (m_keysPressed.d)
+        position = XMVectorSubtract(position, XMVectorScale(rightDir, moveInterval));
+
+    // Движение вверх/вниз (абсолютное, по мировой оси Y)
+    if (m_keysPressed.e)
+        position = XMVectorAdd(position, XMVectorScale(upDir, moveInterval));
+    if (m_keysPressed.q)
+        position = XMVectorSubtract(position, XMVectorScale(upDir, moveInterval));
+
+    XMStoreFloat3(&m_position, position);
 }
 
 XMMATRIX SimpleCamera::GetViewMatrix()
@@ -124,6 +128,12 @@ void SimpleCamera::OnKeyDown(WPARAM key)
         break;
     case 'D':
         m_keysPressed.d = true;
+        break;
+    case 'Q':
+        m_keysPressed.q = true;
+        break;
+    case 'E':
+        m_keysPressed.e = true;
         break;
     case VK_LEFT:
         m_keysPressed.left = true;
@@ -159,6 +169,12 @@ void SimpleCamera::OnKeyUp(WPARAM key)
     case 'D':
         m_keysPressed.d = false;
         break;
+    case 'Q':
+        m_keysPressed.q = false;
+        break;
+    case 'E':
+        m_keysPressed.e = false;
+        break;
     case VK_LEFT:
         m_keysPressed.left = false;
         break;
@@ -172,4 +188,19 @@ void SimpleCamera::OnKeyUp(WPARAM key)
         m_keysPressed.down = false;
         break;
     }
+}
+
+void SimpleCamera::OnMouseMove(int dx, int dy)
+{
+    m_yaw -= dx * m_mouseSensitivity;
+    m_pitch -= dy * m_mouseSensitivity;
+
+    // Prevent looking too far up or down.
+    m_pitch = min(m_pitch, XM_PIDIV2 - 0.01f);
+    m_pitch = max(-XM_PIDIV2 + 0.01f, m_pitch);
+}
+
+void SimpleCamera::SetMouseSensitivity(float sensitivity)
+{
+    m_mouseSensitivity = sensitivity;
 }

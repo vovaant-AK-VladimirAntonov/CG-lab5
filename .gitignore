@@ -1,0 +1,27 @@
+# Visual Studio
+.vs/
+*.pch
+*.ipch
+*.pdb
+*.ilk
+*.obj
+*.log
+*.tlog
+*.idb
+*.iobj
+*.ipdb
+
+# Build directories
+obj/
+bin/
+x64/
+x86/
+Debug/
+Release/
+
+# NuGet
+packages/
+
+# User-specific files
+*.user
+*.suo

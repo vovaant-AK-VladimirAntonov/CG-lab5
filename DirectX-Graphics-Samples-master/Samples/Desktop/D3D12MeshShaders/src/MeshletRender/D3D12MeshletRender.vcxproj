@@ -57,8 +57,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>
-      </AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <FXCompile>
@@ -67,7 +66,8 @@
       <AdditionalOptions>/Fd "$(OutDir)%(Filename).pdb" %(AdditionalOptions)</AdditionalOptions>
     </FXCompile>
     <Link>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dstorage.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3d12.dll</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
@@ -79,23 +79,25 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>
-      </AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dstorage.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3d12.dll</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="D3D12MeshletRender.cpp" />
+    <ClCompile Include="DirectStorageLoader.cpp" />
     <ClCompile Include="DXSample.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Model.cpp" />
     <ClCompile Include="SimpleCamera.cpp" />
+    <ClCompile Include="TextureLoader.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -104,6 +106,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3D12MeshletRender.h" />
+    <ClInclude Include="DirectStorageLoader.h" />
     <ClInclude Include="DXSample.h" />
     <ClInclude Include="DXSampleHelper.h" />
     <ClInclude Include="Model.h" />
@@ -111,6 +114,7 @@
     <ClInclude Include="SimpleCamera.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="StepTimer.h" />
+    <ClInclude Include="TextureLoader.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
@@ -138,6 +142,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\Microsoft.Direct3D.D3D12.1.618.3\build\native\Microsoft.Direct3D.D3D12.targets" Condition="Exists('..\packages\Microsoft.Direct3D.D3D12.1.618.3\build\native\Microsoft.Direct3D.D3D12.targets')" />
+    <Import Project="..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\build\native\targets\Microsoft.Direct3D.DirectStorage.targets" Condition="Exists('..\packages\Microsoft.Direct3D.DirectStorage.1.2.2\build\native\targets\Microsoft.Direct3D.DirectStorage.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>

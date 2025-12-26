@@ -11,6 +11,7 @@
 #pragma once
 
 #include "Span.h"
+#include "DirectStorageLoader.h"
 
 #include <DirectXCollision.h>
 
@@ -138,6 +139,7 @@ class Model
 {
 public:
     HRESULT LoadFromFile(const wchar_t* filename);
+    HRESULT LoadFromFileWithDirectStorage(const wchar_t* filename, DirectStorageLoader* dsLoader);
     HRESULT UploadGpuResources(ID3D12Device* device, ID3D12CommandQueue* cmdQueue, ID3D12CommandAllocator* cmdAlloc, ID3D12GraphicsCommandList* cmdList);
 
     uint32_t GetMeshCount() const { return static_cast<uint32_t>(m_meshes.size()); }
@@ -150,6 +152,8 @@ public:
     auto end() { return m_meshes.end(); }
 
 private:
+    HRESULT ParseBuffer();
+
     std::vector<Mesh>                      m_meshes;
     DirectX::BoundingSphere                m_boundingSphere;
 

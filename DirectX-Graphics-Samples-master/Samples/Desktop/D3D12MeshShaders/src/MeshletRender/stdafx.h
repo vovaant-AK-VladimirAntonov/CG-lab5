@@ -24,8 +24,10 @@
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <DirectXMath.h>
+#include <dstorage.h>
 #include "d3dx12.h"
 
 #include <string>
+#include <fstream>
 #include <wrl.h>
 #include <shellapi.h>

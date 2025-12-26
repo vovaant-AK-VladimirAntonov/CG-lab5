@@ -10,6 +10,7 @@
 //*********************************************************
 #include "stdafx.h"
 #include "Model.h"
+#include "DirectStorageLoader.h"
 
 #include "DXSampleHelper.h"
 
@@ -498,6 +499,244 @@ HRESULT Model::UploadGpuResources(ID3D12Device* device, ID3D12CommandQueue* cmdQ
             WaitForSingleObjectEx(event, INFINITE, false);
             CloseHandle(event);
         }
+    }
+
+    return S_OK;
+}
+
+HRESULT Model::LoadFromFileWithDirectStorage(const wchar_t* filename, DirectStorageLoader* dsLoader)
+{
+    if (dsLoader && dsLoader->IsSupported())
+    {
+        // Use DirectStorage for fast file loading
+        HRESULT hr = dsLoader->LoadFileToMemory(filename, m_buffer);
+        if (FAILED(hr))
+        {
+            return hr;
+        }
+
+        return ParseBuffer();
+    }
+    else
+    {
+        // Fallback to standard file I/O
+        return LoadFromFile(filename);
+    }
+}
+
+HRESULT Model::ParseBuffer()
+{
+    if (m_buffer.empty())
+    {
+        return E_FAIL;
+    }
+
+    const uint32_t c_prologVal = 'MSHL';
+
+    struct FileHeaderDS
+    {
+        uint32_t Prolog;
+        uint32_t Version;
+        uint32_t MeshCount;
+        uint32_t AccessorCount;
+        uint32_t BufferViewCount;
+        uint32_t BufferSize;
+    };
+
+    struct MeshHeaderDS
+    {
+        uint32_t Indices;
+        uint32_t IndexSubsets;
+        uint32_t Attributes[Attribute::Count];
+        uint32_t Meshlets;
+        uint32_t MeshletSubsets;
+        uint32_t UniqueVertexIndices;
+        uint32_t PrimitiveIndices;
+        uint32_t CullData;
+    };
+
+    struct BufferViewDS
+    {
+        uint32_t Offset;
+        uint32_t Size;
+    };
+
+    struct AccessorDS
+    {
+        uint32_t BufferView;
+        uint32_t Offset;
+        uint32_t Size;
+        uint32_t Stride;
+        uint32_t Count;
+    };
+
+    const D3D12_INPUT_ELEMENT_DESC c_elementDescsDS[Attribute::Count] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
+        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
+        { "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
+        { "BITANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
+    };
+
+    auto GetFormatSizeDS = [](DXGI_FORMAT format) -> uint32_t {
+        switch(format)
+        {
+            case DXGI_FORMAT_R32G32B32A32_FLOAT: return 16;
+            case DXGI_FORMAT_R32G32B32_FLOAT: return 12;
+            case DXGI_FORMAT_R32G32_FLOAT: return 8;
+            case DXGI_FORMAT_R32_FLOAT: return 4;
+            default: return 0;
+        }
+    };
+
+    size_t offset = 0;
+    FileHeaderDS header;
+    std::memcpy(&header, m_buffer.data() + offset, sizeof(header));
+    offset += sizeof(header);
+
+    if (header.Prolog != c_prologVal)
+    {
+        return E_FAIL;
+    }
+
+    std::vector<MeshHeaderDS> meshes(header.MeshCount);
+    std::memcpy(meshes.data(), m_buffer.data() + offset, meshes.size() * sizeof(MeshHeaderDS));
+    offset += meshes.size() * sizeof(MeshHeaderDS);
+
+    std::vector<AccessorDS> accessors(header.AccessorCount);
+    std::memcpy(accessors.data(), m_buffer.data() + offset, accessors.size() * sizeof(AccessorDS));
+    offset += accessors.size() * sizeof(AccessorDS);
+
+    std::vector<BufferViewDS> bufferViews(header.BufferViewCount);
+    std::memcpy(bufferViews.data(), m_buffer.data() + offset, bufferViews.size() * sizeof(BufferViewDS));
+    offset += bufferViews.size() * sizeof(BufferViewDS);
+
+    uint8_t* dataStart = m_buffer.data() + offset;
+
+    m_meshes.resize(meshes.size());
+    for (uint32_t i = 0; i < static_cast<uint32_t>(meshes.size()); ++i)
+    {
+        auto& meshView = meshes[i];
+        auto& mesh = m_meshes[i];
+
+        // Index data
+        {
+            AccessorDS& accessor = accessors[meshView.Indices];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.IndexSize = accessor.Size;
+            mesh.IndexCount = accessor.Count;
+            mesh.Indices = MakeSpan(dataStart + bufferView.Offset, bufferView.Size);
+        }
+
+        // Index Subset data
+        {
+            AccessorDS& accessor = accessors[meshView.IndexSubsets];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.IndexSubsets = MakeSpan(reinterpret_cast<Subset*>(dataStart + bufferView.Offset), accessor.Count);
+        }
+
+        std::vector<uint32_t> vbMap;
+        mesh.LayoutDesc.pInputElementDescs = mesh.LayoutElems;
+        mesh.LayoutDesc.NumElements = 0;
+
+        for (uint32_t j = 0; j < Attribute::Count; ++j)
+        {
+            if (meshView.Attributes[j] == static_cast<uint32_t>(-1))
+                continue;
+
+            AccessorDS& accessor = accessors[meshView.Attributes[j]];
+            auto it = std::find(vbMap.begin(), vbMap.end(), accessor.BufferView);
+            if (it != vbMap.end())
+                continue;
+
+            vbMap.push_back(accessor.BufferView);
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            Span<uint8_t> verts = MakeSpan(dataStart + bufferView.Offset, bufferView.Size);
+            mesh.VertexStrides.push_back(accessor.Stride);
+            mesh.Vertices.push_back(verts);
+            mesh.VertexCount = static_cast<uint32_t>(verts.size()) / accessor.Stride;
+        }
+
+        for (uint32_t j = 0; j < Attribute::Count; ++j)
+        {
+            if (meshView.Attributes[j] == static_cast<uint32_t>(-1))
+                continue;
+
+            AccessorDS& accessor = accessors[meshView.Attributes[j]];
+            auto it = std::find(vbMap.begin(), vbMap.end(), accessor.BufferView);
+            D3D12_INPUT_ELEMENT_DESC desc = c_elementDescsDS[j];
+            desc.InputSlot = static_cast<uint32_t>(std::distance(vbMap.begin(), it));
+            mesh.LayoutElems[mesh.LayoutDesc.NumElements++] = desc;
+        }
+
+        // Meshlet data
+        {
+            AccessorDS& accessor = accessors[meshView.Meshlets];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.Meshlets = MakeSpan(reinterpret_cast<Meshlet*>(dataStart + bufferView.Offset), accessor.Count);
+        }
+
+        // Meshlet Subset data
+        {
+            AccessorDS& accessor = accessors[meshView.MeshletSubsets];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.MeshletSubsets = MakeSpan(reinterpret_cast<Subset*>(dataStart + bufferView.Offset), accessor.Count);
+        }
+
+        // Unique Vertex Index data
+        {
+            AccessorDS& accessor = accessors[meshView.UniqueVertexIndices];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.UniqueVertexIndices = MakeSpan(dataStart + bufferView.Offset, bufferView.Size);
+        }
+
+        // Primitive Index data
+        {
+            AccessorDS& accessor = accessors[meshView.PrimitiveIndices];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.PrimitiveIndices = MakeSpan(reinterpret_cast<PackedTriangle*>(dataStart + bufferView.Offset), accessor.Count);
+        }
+
+        // Cull data
+        {
+            AccessorDS& accessor = accessors[meshView.CullData];
+            BufferViewDS& bufferView = bufferViews[accessor.BufferView];
+            mesh.CullingData = MakeSpan(reinterpret_cast<CullData*>(dataStart + bufferView.Offset), accessor.Count);
+        }
+    }
+
+    // Build bounding spheres
+    for (uint32_t i = 0; i < static_cast<uint32_t>(m_meshes.size()); ++i)
+    {
+        auto& m = m_meshes[i];
+        uint32_t vbIndexPos = 0;
+
+        for (uint32_t j = 1; j < m.LayoutDesc.NumElements; ++j)
+        {
+            if (strcmp(m.LayoutElems[j].SemanticName, "POSITION") == 0)
+            {
+                vbIndexPos = j;
+                break;
+            }
+        }
+
+        uint32_t positionOffset = 0;
+        for (uint32_t j = 0; j < m.LayoutDesc.NumElements; ++j)
+        {
+            if (strcmp(m.LayoutElems[j].SemanticName, "POSITION") == 0)
+                break;
+            if (m.LayoutElems[j].InputSlot == vbIndexPos)
+                positionOffset += GetFormatSizeDS(m.LayoutElems[j].Format);
+        }
+
+        DirectX::XMFLOAT3* v0 = reinterpret_cast<DirectX::XMFLOAT3*>(m.Vertices[vbIndexPos].data() + positionOffset);
+        DirectX::BoundingSphere::CreateFromPoints(m.BoundingSphere, m.VertexCount, v0, m.VertexStrides[vbIndexPos]);
+
+        if (i == 0)
+            m_boundingSphere = m.BoundingSphere;
+        else
+            DirectX::BoundingSphere::CreateMerged(m_boundingSphere, m_boundingSphere, m.BoundingSphere);
     }
 
     return S_OK;

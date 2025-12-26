@@ -26,4 +26,6 @@ protected:
 
 private:
     static HWND m_hwnd;
+    static bool m_mouseCapture;
+    static POINT m_lastMousePos;
 };

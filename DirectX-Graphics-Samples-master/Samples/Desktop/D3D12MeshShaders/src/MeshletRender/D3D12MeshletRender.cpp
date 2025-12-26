@@ -12,10 +12,12 @@
 #include "stdafx.h"
 #include "D3D12MeshletRender.h"
 
-const wchar_t* D3D12MeshletRender::c_meshFilename = L"..\\Assets\\Knight.bin";
+const wchar_t* D3D12MeshletRender::c_meshFilename = L"..\\Assets\\NEGR.bin";
 
 const wchar_t* D3D12MeshletRender::c_meshShaderFilename = L"MeshletMS.cso";
 const wchar_t* D3D12MeshletRender::c_pixelShaderFilename = L"MeshletPS.cso";
+const wchar_t* D3D12MeshletRender::c_diffuseTextureFilename = L"..\\Assets\\texture.dds";
+const wchar_t* D3D12MeshletRender::c_normalTextureFilename = L"..\\Assets\\texture_nm.dds";
 
 extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 618; }
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\"; }
@@ -26,12 +28,15 @@ D3D12MeshletRender::D3D12MeshletRender(UINT width, UINT height, std::wstring nam
     , m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height))
     , m_rtvDescriptorSize(0)
     , m_dsvDescriptorSize(0)
+    , m_srvDescriptorSize(0)
     , m_constantBufferData{}
     , m_cbvDataBegin(nullptr)
     , m_frameIndex(0)
     , m_frameCounter(0)
     , m_fenceEvent{}
     , m_fenceValues{}
+    , m_usedDirectStorage(false)
+    , m_useTexture(true)
 { }
 
 void D3D12MeshletRender::OnInit()
@@ -157,6 +162,22 @@ void D3D12MeshletRender::LoadPipeline()
         ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)));
 
         m_dsvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
+        // Describe and create a shader resource view (SRV) descriptor heap for textures.
+        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+        srvHeapDesc.NumDescriptors = 2; // Diffuse + Normal textures
+        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap)));
+
+        m_srvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        // Describe and create a sampler descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
+        samplerHeapDesc.NumDescriptors = 1;
+        samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+        samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ThrowIfFailed(m_device->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&m_samplerHeap)));
     }
 
     // Create frame resources.
@@ -276,23 +297,75 @@ void D3D12MeshletRender::LoadAssets()
     // to record yet. The main loop expects it to be closed, so close it now.
     ThrowIfFailed(m_commandList->Close());
 
-    m_model.LoadFromFile(c_meshFilename);
+    // Initialize DirectStorage for fast asset loading
+    m_dsLoader.Initialize(m_device.Get());
+    
+    // Store whether DirectStorage is available
+    m_usedDirectStorage = m_dsLoader.IsSupported();
+
+    // Load model using DirectStorage (falls back to standard I/O if not supported)
+    m_model.LoadFromFileWithDirectStorage(c_meshFilename, &m_dsLoader);
+    
     m_model.UploadGpuResources(m_device.Get(), m_commandQueue.Get(), m_commandAllocators[m_frameIndex].Get(), m_commandList.Get());
 
-#ifdef _DEBUG
-    // Mesh shader file expects a certain vertex layout; assert our mesh conforms to that layout.
-    const D3D12_INPUT_ELEMENT_DESC c_elementDescs[2] =
+    // Load textures
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
-        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 1 },
-    };
+        D3D12_SHADER_RESOURCE_VIEW_DESC diffuseSrvDesc = {};
+        D3D12_SHADER_RESOURCE_VIEW_DESC normalSrvDesc = {};
 
+        // Load diffuse texture
+        HRESULT hr = TextureLoader::LoadDDSTexture(
+            m_device.Get(), m_commandQueue.Get(), 
+            m_commandAllocators[m_frameIndex].Get(), m_commandList.Get(),
+            c_diffuseTextureFilename, m_diffuseTexture, diffuseSrvDesc);
+        
+        if (SUCCEEDED(hr))
+        {
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_srvHeap->GetCPUDescriptorHandleForHeapStart());
+            m_device->CreateShaderResourceView(m_diffuseTexture.Get(), &diffuseSrvDesc, srvHandle);
+        }
+
+        // Load normal map texture
+        hr = TextureLoader::LoadDDSTexture(
+            m_device.Get(), m_commandQueue.Get(),
+            m_commandAllocators[m_frameIndex].Get(), m_commandList.Get(),
+            c_normalTextureFilename, m_normalTexture, normalSrvDesc);
+
+        if (SUCCEEDED(hr))
+        {
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), 1, m_srvDescriptorSize);
+            m_device->CreateShaderResourceView(m_normalTexture.Get(), &normalSrvDesc, srvHandle);
+        }
+
+        // Create sampler
+        D3D12_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.MipLODBias = 0;
+        samplerDesc.MaxAnisotropy = 16;
+        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        samplerDesc.MinLOD = 0;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+
+        m_device->CreateSampler(&samplerDesc, m_samplerHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+
+#ifdef _DEBUG
+    // Log vertex layout info for debugging
     for (auto& mesh : m_model)
     {
-        assert(mesh.LayoutDesc.NumElements == 2);
-
-        for (uint32_t i = 0; i < _countof(c_elementDescs); ++i)
-            assert(std::memcmp(&mesh.LayoutElems[i], &c_elementDescs[i], sizeof(D3D12_INPUT_ELEMENT_DESC)) == 0);
+        OutputDebugStringA("Mesh vertex layout:\n");
+        for (uint32_t i = 0; i < mesh.LayoutDesc.NumElements; ++i)
+        {
+            char buf[256];
+            sprintf_s(buf, "  %s (slot %u)\n", mesh.LayoutElems[i].SemanticName, mesh.LayoutElems[i].InputSlot);
+            OutputDebugStringA(buf);
+        }
+        char buf[64];
+        sprintf_s(buf, "  Vertex buffers: %zu\n", mesh.VertexResources.size());
+        OutputDebugStringA(buf);
     }
 #endif
     
@@ -322,9 +395,11 @@ void D3D12MeshletRender::OnUpdate()
 
     if (m_frameCounter++ % 30 == 0)
     {
-        // Update window text with FPS value.
-        wchar_t fps[64];
-        swprintf_s(fps, L"%ufps", m_timer.GetFramesPerSecond());
+        // Update window text with FPS value and DirectStorage status.
+        wchar_t fps[128];
+        swprintf_s(fps, L"%ufps | %s", 
+            m_timer.GetFramesPerSecond(),
+            m_usedDirectStorage ? L"DirectStorage: ON" : L"DirectStorage: OFF (fallback)");
         SetCustomWindowText(fps);
     }
 
@@ -338,6 +413,7 @@ void D3D12MeshletRender::OnUpdate()
     XMStoreFloat4x4(&m_constantBufferData.WorldView, XMMatrixTranspose(world * view));
     XMStoreFloat4x4(&m_constantBufferData.WorldViewProj, XMMatrixTranspose(world * view * proj));
     m_constantBufferData.DrawMeshlets = true;
+    m_constantBufferData.UseTexture = m_useTexture ? 1 : 0;
 
     memcpy(m_cbvDataBegin + sizeof(SceneConstantBuffer) * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
 }
@@ -369,12 +445,21 @@ void D3D12MeshletRender::OnDestroy()
 
 void D3D12MeshletRender::OnKeyDown(UINT8 key)
 {
+    if (key == 'T')
+    {
+        m_useTexture = !m_useTexture;
+    }
     m_camera.OnKeyDown(key);
 }
 
 void D3D12MeshletRender::OnKeyUp(UINT8 key)
 {
     m_camera.OnKeyUp(key);
+}
+
+void D3D12MeshletRender::OnMouseMove(int dx, int dy)
+{
+    m_camera.OnMouseMove(dx, dy);
 }
 
 void D3D12MeshletRender::PopulateCommandList()
@@ -391,6 +476,11 @@ void D3D12MeshletRender::PopulateCommandList()
 
     // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+
+    // Bind texture descriptor heaps
+    ID3D12DescriptorHeap* heaps[] = { m_srvHeap.Get(), m_samplerHeap.Get() };
+    m_commandList->SetDescriptorHeaps(2, heaps);
+
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
@@ -408,6 +498,10 @@ void D3D12MeshletRender::PopulateCommandList()
     m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + sizeof(SceneConstantBuffer) * m_frameIndex);
+
+    // Bind texture and sampler descriptor tables
+    m_commandList->SetGraphicsRootDescriptorTable(6, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+    m_commandList->SetGraphicsRootDescriptorTable(7, m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
 
     for (auto& mesh : m_model)
     {
